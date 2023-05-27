@@ -1,33 +1,80 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, EventRef, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, normalizePath } from 'obsidian';
+import { NewNoteMagicianSettings, DEFAULT_SETTINGS, NewNoteMagicianSettingTab, FolderRule } from "src/Settings"
+
 
 // Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
-	mySetting: string;
-}
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
-}
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class NewNoteMagicianPlugin extends Plugin {
+	settings: NewNoteMagicianSettings;
+    private trigger_on_file_creation_event: EventRef | undefined;
 
 	async onload() {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
 
+		// This adds a settings tab so the user can configure various aspects of the plugin
+		this.addSettingTab(new NewNoteMagicianSettingTab(this.app, this));
+
+		this.setup();
+	}
+
+    setup(): void {
+        app.workspace.onLayoutReady(() => {
+            this.update_trigger_file_on_creation();
+        });
+    }
+
+	update_trigger_file_on_creation() {
+        if (this.settings.trigger_on_file_creation) {
+            this.trigger_on_file_creation_event = app.vault.on(
+                "create",
+                (file: TAbstractFile) =>
+                    NewNoteMagicianPlugin.on_file_creation(this, file)
+            );
+            this.registerEvent(this.trigger_on_file_creation_event);
+        } else {
+            if (this.trigger_on_file_creation_event) {
+                app.vault.offref(this.trigger_on_file_creation_event);
+                this.trigger_on_file_creation_event = undefined;
+            }
+        }
+
+	}
+
+	public static async  on_file_creation(plugin:NewNoteMagicianPlugin, file:TAbstractFile) {
+		// difficulté
+		// a priori, la note est déjà créée à ce moment là, 
+		// console.log("NNM: vault root : " + file.vault.getRoot().path)
+		if (file instanceof TFile) {
+			var newPathInVault = "HERE/" + file.name;
+			var newFullPath = normalizePath(file.vault.getRoot().path + "/" + newPathInVault)
+			await plugin.app.fileManager.renameFile(file, newPathInVault );
+			var movedFile = file.vault.getAbstractFileByPath(newPathInVault);
+			if (movedFile != null) {
+				// return movedFile;
+			} else {
+				// this should not happen
+			}
+		}
+	}
+
+	onunload() {
+
+	}
+
+	async loadSettings() {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	async saveSettings() {
+		await this.saveData(this.settings);
+	}
+
+	addCommands() {
+		
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
 			id: 'open-sample-modal-simple',
@@ -47,12 +94,14 @@ export default class MyPlugin extends Plugin {
 		});
 		// This adds a complex command that can check whether the current state of the app allows execution of the command
 		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
+			id: 'new-note-magician-move',
+			name: 'New note magician: Move to preferred location',
 			checkCallback: (checking: boolean) => {
 				// Conditions to check
 				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (markdownView) {
+					var currentFile = markdownView.file
+					var selectedRule = this.selectRule(currentFile)
 					// If checking is true, we're simply "checking" if the command can be run.
 					// If checking is false, then we want to actually perform the operation.
 					if (!checking) {
@@ -64,30 +113,40 @@ export default class MyPlugin extends Plugin {
 				}
 			}
 		});
+	}
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
+	addUserInterface() {
+		
+		// This creates an icon in the left ribbon.
+		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
+			// Called when the user clicks the icon.
+			new Notice('Welcome in New Note Magician !');
 		});
+		// Perform additional things with the ribbon
+		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
+		const statusBarItemEl = this.addStatusBarItem();
+		statusBarItemEl.setText('Status Bar Text');
 	}
 
-	onunload() {
-
+	// Retourne la première règle applicable
+	// @returns : la règle applicable, ou null
+	selectRule(file:TAbstractFile):FolderRule | null {
+		var result:FolderRule|null = null;
+		for (var rule of this.settings.folder_templates) {
+			if (this.ruleTest(rule, file)) {
+				result = rule; 
+				break;
+			}
+		}
+		return result;
 	}
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
-
-	async saveSettings() {
-		await this.saveData(this.settings);
+	// applique une règle 
+	ruleTest(rule:FolderRule, file:TAbstractFile ) {
+		var regexp = new RegExp(rule.fileRegex);
+		return regexp.test(file.name) || regexp.test(file.path);
 	}
 }
 
@@ -107,31 +166,4 @@ class SampleModal extends Modal {
 	}
 }
 
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
 
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		containerEl.createEl('h2', {text: 'Settings for my awesome plugin.'});
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					console.log('Secret: ' + value);
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
-}
