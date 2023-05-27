@@ -5,7 +5,9 @@ import NewNoteMagicianPlugin from "main";
 export const DEFAULT_SETTINGS: NewNoteMagicianSettings = {
     trigger_on_file_creation: true,
     handle_daily_notes: true,
-    folder_templates: [{fileRegex:"20\d\d-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])", targetFolder:"DAILY/"}],
+    folder_rules: [
+        {fileRegex:"20\d\d-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])", targetFolder:"DAILY/"},
+        {fileRegex:"person/.*", targetFolder:"PERSONS/"}],
     ask_user_if_no_folder: false,
 };
 
@@ -17,7 +19,7 @@ export interface FolderRule {
 export interface NewNoteMagicianSettings {
     trigger_on_file_creation: boolean;
     handle_daily_notes: boolean;
-    folder_templates: Array<FolderRule>;
+    folder_rules: Array<FolderRule>;
     ask_user_if_no_folder: boolean;
 }
 

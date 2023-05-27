@@ -49,14 +49,21 @@ export default class NewNoteMagicianPlugin extends Plugin {
 		// a priori, la note est déjà créée à ce moment là, 
 		// console.log("NNM: vault root : " + file.vault.getRoot().path)
 		if (file instanceof TFile) {
-			var newPathInVault = "HERE/" + file.name;
-			var newFullPath = normalizePath(file.vault.getRoot().path + "/" + newPathInVault)
-			await plugin.app.fileManager.renameFile(file, newPathInVault );
+			var selectedRule = plugin.selectRule(file)
+			if (selectedRule) {
+				// we have a matching rule
+				var targetPathInVault = plugin.computeRuleTarget(selectedRule, file);
+				console.log("NNM: rule target for " + file.path + " is " + targetPathInVault)
+				await plugin.app.fileManager.renameFile(file, targetPathInVault );
+				/*
+
 			var movedFile = file.vault.getAbstractFileByPath(newPathInVault);
 			if (movedFile != null) {
 				// return movedFile;
 			} else {
 				// this should not happen
+			}
+				*/
 			}
 		}
 	}
@@ -129,25 +136,44 @@ export default class NewNoteMagicianPlugin extends Plugin {
 		const statusBarItemEl = this.addStatusBarItem();
 		statusBarItemEl.setText('Status Bar Text');
 	}
+	
+	// applique une règle 
+	ruleTest(rule:FolderRule, file:TAbstractFile ) {
+		var regexp = new RegExp(rule.fileRegex);
+		var nameMatch = regexp.test(file.name)
+		var pathMatch = regexp.test(file.path)
+		console.log("NNM : ruleTest for /" + rule.fileRegex + "/")
+		console.log("NNM : nameMatch : " + nameMatch );
+		console.log("NNM : pathMatch : " + pathMatch ); 
+		return regexp.test(file.name) || regexp.test(file.path);
+	}
 
 	// Retourne la première règle applicable
 	// @returns : la règle applicable, ou null
 	selectRule(file:TAbstractFile):FolderRule | null {
+		console.log("NNM : select rule for " + file.path ); 
 		var result:FolderRule|null = null;
-		for (var rule of this.settings.folder_templates) {
+		console.log("NNM : all rules " + this.settings.folder_rules ); 
+		for (var rule of this.settings.folder_rules) {
+			console.log("NNM : tyr rule " + rule.fileRegex ); 
 			if (this.ruleTest(rule, file)) {
 				result = rule; 
 				break;
 			}
 		}
+		if (result) {
+			console.log("NNM : selected rule : " + file.path ); 
+		} else {
+			console.log("NNM : no applicable rule for : " + file.path ); 
+		}
 		return result;
 	}
 
-	// applique une règle 
-	ruleTest(rule:FolderRule, file:TAbstractFile ) {
-		var regexp = new RegExp(rule.fileRegex);
-		return regexp.test(file.name) || regexp.test(file.path);
+	computeRuleTarget(rule:FolderRule, file:TFile) : string {
+		var newPath = normalizePath(rule.targetFolder + "/" + file.name);
+		return newPath
 	}
+
 }
 
 class SampleModal extends Modal {

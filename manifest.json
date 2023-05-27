@@ -1,7 +1,7 @@
 {
 	"id": "obsidian-new-note-magician",
 	"name": "New Note Magician",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"minAppVersion": "0.15.0",
 	"description": "This plugin for Obsidian provides options to create new notes in specific folders",
 	"author": "Olivier CHEVET",
