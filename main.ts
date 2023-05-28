@@ -1,5 +1,6 @@
 import { App, Editor, EventRef, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, normalizePath } from 'obsidian';
 import { NewNoteMagicianSettings, DEFAULT_SETTINGS, NewNoteMagicianSettingTab, FolderRule } from "src/Settings"
+import { getPathFile as getPathFilename, getPathParent } from 'src/utils/utils';
 
 
 // Remember to rename these classes and interfaces!
@@ -17,6 +18,7 @@ export default class NewNoteMagicianPlugin extends Plugin {
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new NewNoteMagicianSettingTab(this.app, this));
+		this.addCommands();
 
 		this.setup();
 	}
@@ -52,9 +54,11 @@ export default class NewNoteMagicianPlugin extends Plugin {
 			var selectedRule = plugin.selectRule(file)
 			if (selectedRule) {
 				// we have a matching rule
-				var targetPathInVault = plugin.computeRuleTarget(selectedRule, file);
+				var targetPathInVault = plugin.computeRuleTargetPath(selectedRule, file);
 				console.log("NNM: rule target for " + file.path + " is " + targetPathInVault)
-				await plugin.app.fileManager.renameFile(file, targetPathInVault );
+				if (targetPathInVault) {
+					await plugin.app.fileManager.renameFile(file, targetPathInVault );
+				}
 				/*
 
 			var movedFile = file.vault.getAbstractFileByPath(newPathInVault);
@@ -81,7 +85,7 @@ export default class NewNoteMagicianPlugin extends Plugin {
 	}
 
 	addCommands() {
-		
+		var myPlugin = this;	// closure
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
 			id: 'open-sample-modal-simple',
@@ -103,22 +107,33 @@ export default class NewNoteMagicianPlugin extends Plugin {
 		this.addCommand({
 			id: 'new-note-magician-move',
 			name: 'New note magician: Move to preferred location',
-			checkCallback: (checking: boolean) => {
+			callback:  async () => {
 				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					var currentFile = markdownView.file
-					var selectedRule = this.selectRule(currentFile)
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
+					console.log("new-note-magician-move")
+					var fileIsOK = false;
+					const currentFile = this.app.workspace.getActiveFile();
+					if (currentFile) {
+						console.log("currentFile is " + currentFile.path)
+						var preferedPath = this.computePreferedLocation(currentFile);
+						console.log("preferedLocation is " + preferedPath)
+						var fileIsOK = this.fileIsAtPreferedLocation(currentFile, preferedPath);
+						console.log("fileIsOK is " + fileIsOK)
+	
+						if (!fileIsOK) {
+							// we have a currentFile at a wrong location
+							try {
+								myPlugin.beginTransaction('move "' + currentFile.name + '"')
+								// on effectue le mouvement du fichier
+								await this.app.fileManager.renameFile(currentFile, preferedPath );
+								myPlugin.commitTransaction();
+							} catch (ex) {
+								myPlugin.rollbackTransaction();
+							}
+						} else {
+							new SampleModal(this.app).open();
+						}
 					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
 				}
-			}
 		});
 	}
 
@@ -169,9 +184,50 @@ export default class NewNoteMagicianPlugin extends Plugin {
 		return result;
 	}
 
-	computeRuleTarget(rule:FolderRule, file:TFile) : string {
+	// Calcule l'emplacement pour ce fichier en appliquant cette règle
+	// ATTENTION : on suppose que les conditions de la règle ont été vérifiées
+	computeRuleTargetPath(rule:FolderRule, file:TFile) : string {
 		var newPath = normalizePath(rule.targetFolder + "/" + file.name);
-		return newPath
+		return newPath;
+	}
+
+	computePreferedLocation(file:TFile) : string {
+		var result : string = file.path
+		var rule = this.selectRule(file);
+		if (rule) {
+			result = this.computeRuleTargetPath(rule, file);
+		}
+		// always retune a TFile (file itself is no result was obtained)
+		return result;
+	}
+
+	fileIsAtPreferedLocation(someFile:TFile, preferedLocation: string) {
+		console.log(`fileIsAtPreferedLocation for '${someFile.path}'`)
+		console.log(`preferedLocation folder ${getPathParent(preferedLocation)}`)
+		console.log(`someFile folder ${someFile.parent?.path}`)
+		console.log(`preferedLocation filename ${getPathFilename(preferedLocation)}`)
+		console.log(`someFile filename ${someFile.name}`)
+		var sameParent = (someFile.parent?.path == getPathParent(preferedLocation));
+		var sameName = (someFile.name == getPathFilename(preferedLocation))
+		return sameParent && sameName;
+	}
+
+	async beginTransaction(tname:string) {
+
+	}
+
+	// in the future, it will handle the history of moves, to allow rolling back
+	async moveFileToPreferedLocation(file:TFile, preferedLocation:TFile) {
+		
+		await this.app.fileManager.renameFile(file, preferedLocation.path );
+	}
+	
+	async commitTransaction() {
+		
+	}
+	
+	async rollbackTransaction() {
+		
 	}
 
 }

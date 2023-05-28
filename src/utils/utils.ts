@@ -78,3 +78,15 @@ export function arraymove<T>(
     arr[fromIndex] = arr[toIndex];
     arr[toIndex] = element;
 }
+
+// retourne le nom de fichier dans un chemin
+export function getPathFile(path:string) {
+    var lastSlash = path.lastIndexOf("/");
+    return lastSlash == -1 ? path : path.substring(lastSlash + 1)
+}
+
+// retourne le chemin du dossier parent dans un chemin
+export function getPathParent(path:string) {
+    var lastSlash = path.lastIndexOf("/");
+    return lastSlash == -1 ? "" : path.substring(0, lastSlash);
+}
